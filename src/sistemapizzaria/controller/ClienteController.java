@@ -13,6 +13,11 @@ import sistemapizzaria.telas.TelaClientes;
  */
 public class ClienteController {
 
+    // Nome e sobrenome começam com uma letra e aceitam letras (com acento), espaço, ponto, hífen e apóstrofo (' ou ’)
+    private static final String PADRAO_NOME = "\\p{L}[\\p{L} .'\\u2019\\-]*";
+    // Mesmo tamanho declarado nas colunas nome/sobrenome da tabela clientes
+    private static final int TAMANHO_MAXIMO_NOME = 100;
+
     private final TelaClientes view;
     private final ClienteTableModel tableModel;
     private final ClienteDao clienteDao;
@@ -56,9 +61,13 @@ public class ClienteController {
             if (nome == null || nome.trim().isEmpty()) {
                 throw new IllegalArgumentException("O nome do cliente não pode estar vazio!");
             }
+            validarNomeDePessoa(nome.trim(), "nome");
+
             if (sobrenome == null || sobrenome.trim().isEmpty()) {
                 throw new IllegalArgumentException("O sobrenome do cliente não pode estar vazio!");
             }
+            validarNomeDePessoa(sobrenome.trim(), "sobrenome");
+
             if (telefone == null || telefone.trim().isEmpty()) {
                 throw new IllegalArgumentException("O telefone do cliente não pode estar vazio!");
             }
@@ -104,6 +113,18 @@ public class ClienteController {
         }
     }
 
+    // Nome/sobrenome: só letras (com acento), espaço, ponto, hífen e apóstrofo, com no máximo 100 caracteres
+    private void validarNomeDePessoa(String valor, String campo) {
+        if (valor.length() > TAMANHO_MAXIMO_NOME) {
+            throw new IllegalArgumentException("O " + campo + " do cliente deve ter no máximo " + TAMANHO_MAXIMO_NOME + " caracteres!");
+        }
+        if (!valor.matches(PADRAO_NOME)) {
+            throw new IllegalArgumentException(
+                "O " + campo + " do cliente deve conter apenas letras (também são aceitos espaços, ponto, hífen e apóstrofo)!"
+            );
+        }
+    }
+
     public void iniciarEdicao(int linhaSelecionada) {
         if (linhaSelecionada == -1) {
             view.exibirAviso("Por favor, selecione um cliente na tabela para editar.");
@@ -134,6 +155,17 @@ public class ClienteController {
         if (selecionado == null) {
             return;
         }
+
+        // Excluir o cliente apaga também todos os pedidos dele. Pede confirmação antes
+        String pergunta = "Deseja realmente excluir o cliente '" + selecionado.getNome() + " " + selecionado.getSobrenome() + "'?";
+        int qtdPedidos = selecionado.getPedidos().size();
+        if (qtdPedidos > 0) {
+            pergunta += "\nEle possui " + qtdPedidos + " pedido(s), que também serão excluídos.";
+        }
+        if (!view.confirmarAcao(pergunta)) {
+            return;
+        }
+
         try {
             clienteDao.delete(selecionado);
             view.exibirSucesso("Cliente '" + selecionado.getNome() + "' e seus pedidos foram excluídos com sucesso!");

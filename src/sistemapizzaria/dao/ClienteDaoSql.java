@@ -23,13 +23,11 @@ public class ClienteDaoSql implements ClienteDao {
     private final String selectAll = "SELECT id, nome, sobrenome, telefone FROM clientes ORDER BY nome, sobrenome";
     private final String selectById = "SELECT id, nome, sobrenome, telefone FROM clientes WHERE id = ?";
     private final String selectByTelefone = "SELECT id, nome, sobrenome, telefone FROM clientes WHERE telefone = ?";
-    private final String selectByFiltro =
+    // O telefone é guardado só com dígitos, então o LIKE do SQLite resolve a busca. O sobrenome NÃO é filtrado no SQL
+    // (veja TextoUtil): a comparação sem diferenciar maiúsculas/acentos é feita em Java.
+    private final String selectByTelefoneParcial =
         "SELECT id, nome, sobrenome, telefone FROM clientes " +
-        "WHERE LOWER(sobrenome) LIKE ? OR telefone LIKE ? " +
-        "ORDER BY nome, sobrenome";
-    private final String selectBySobrenomeETelefone =
-        "SELECT id, nome, sobrenome, telefone FROM clientes " +
-        "WHERE LOWER(sobrenome) LIKE ? AND telefone LIKE ? " +
+        "WHERE telefone LIKE ? " +
         "ORDER BY nome, sobrenome";
 
     private ClienteDaoSql() {
@@ -148,15 +146,18 @@ public class ClienteDaoSql implements ClienteDao {
         if (filtro == null || filtro.trim().isEmpty()) {
             return getAll();
         }
-        String termo = "%" + filtro.trim().toLowerCase() + "%";
+        // O mesmo termo é procurado no sobrenome (sem diferenciar maiúsculas/acentos) ou no telefone
+        String termoSobrenome = TextoUtil.normalizar(filtro);
+        String termoTelefone = filtro.trim();
         List<Cliente> clientes = new ArrayList<>();
         try (Connection con = ConnectionFactory.getConnection();
-             PreparedStatement stmt = con.prepareStatement(selectByFiltro)) {
-            stmt.setString(1, termo);
-            stmt.setString(2, termo);
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    clientes.add(mapearClienteSemPedidos(rs));
+             PreparedStatement stmt = con.prepareStatement(selectAll);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                Cliente c = mapearClienteSemPedidos(rs);
+                if (TextoUtil.normalizar(c.getSobrenome()).contains(termoSobrenome)
+                        || c.getTelefone().contains(termoTelefone)) {
+                    clientes.add(c);
                 }
             }
         }
@@ -166,16 +167,19 @@ public class ClienteDaoSql implements ClienteDao {
 
     @Override
     public List<Cliente> buscarPorSobrenomeETelefone(String sobrenome, String telefone) throws SQLException, IOException {
-        String termoSobrenome = "%" + (sobrenome != null ? sobrenome.trim().toLowerCase() : "") + "%";
+        String termoSobrenome = TextoUtil.normalizar(sobrenome);
         String termoTelefone = "%" + (telefone != null ? telefone.trim() : "") + "%";
         List<Cliente> clientes = new ArrayList<>();
         try (Connection con = ConnectionFactory.getConnection();
-             PreparedStatement stmt = con.prepareStatement(selectBySobrenomeETelefone)) {
-            stmt.setString(1, termoSobrenome);
-            stmt.setString(2, termoTelefone);
+             PreparedStatement stmt = con.prepareStatement(selectByTelefoneParcial)) {
+            stmt.setString(1, termoTelefone);
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    clientes.add(mapearClienteSemPedidos(rs));
+                    Cliente c = mapearClienteSemPedidos(rs);
+                    // Parte do sobrenome, sem diferenciar maiúsculas nem acentos (ex.: "alvares" encontra "Álvares")
+                    if (TextoUtil.normalizar(c.getSobrenome()).contains(termoSobrenome)) {
+                        clientes.add(c);
+                    }
                 }
             }
         }

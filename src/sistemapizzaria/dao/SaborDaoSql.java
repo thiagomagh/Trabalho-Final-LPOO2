@@ -28,11 +28,6 @@ public class SaborDaoSql implements SaborDao {
         "FROM sabores s " +
         "INNER JOIN tipos_pizza t ON s.categoria = t.categoria " +
         "WHERE s.id = ?";
-    private final String selectByNome =
-        "SELECT s.id, s.nome, s.categoria, t.preco_cm2 " +
-        "FROM sabores s " +
-        "INNER JOIN tipos_pizza t ON s.categoria = t.categoria " +
-        "WHERE LOWER(s.nome) = LOWER(?)";
 
     private SaborDaoSql() {
     }
@@ -88,13 +83,12 @@ public class SaborDaoSql implements SaborDao {
 
     @Override
     public Sabor getByNome(String nome) throws SQLException, IOException {
-        try (Connection con = ConnectionFactory.getConnection();
-             PreparedStatement stmt = con.prepareStatement(selectByNome)) {
-            stmt.setString(1, nome != null ? nome.trim() : "");
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return mapearSabor(rs);
-                }
+        // A comparação é feita em Java e ignora maiúsculas/minúsculas e acentos (veja TextoUtil): o LOWER do SQLite
+        // só trata letras ASCII, então "RÚCULA" não seria reconhecido como o mesmo sabor de "Rúcula".
+        String procurado = TextoUtil.normalizar(nome);
+        for (Sabor sabor : getAll()) {
+            if (TextoUtil.normalizar(sabor.getNome()).equals(procurado)) {
+                return sabor;
             }
         }
         return null;

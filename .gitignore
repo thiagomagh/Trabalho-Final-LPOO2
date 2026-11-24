@@ -53,7 +53,7 @@ out/
 ##############################
 ## Eclipse
 ##############################
-.settings/
+.settings/*
 bin/
 tmp/
 .metadata
@@ -100,4 +100,9 @@ nb-configuration.xml
 !docs/projeto_especificacoes.pdf
 !docs/diagrama_classe.pdf
 *.db
+
+# Projeto Eclipse (entregável: projeto na IDE com código fonte). A codificação UTF-8 é necessária por causa dos acentos.
+!.project
+!.classpath
+!.settings/org.eclipse.core.resources.prefs
 

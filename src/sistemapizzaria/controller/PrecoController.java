@@ -80,8 +80,17 @@ public class PrecoController {
         if (texto == null || texto.trim().isEmpty()) {
             throw new IllegalArgumentException("O preço da categoria " + nomeCampo + " não pode estar vazio.");
         }
-        String limpo = texto.replace("R$", "").replace(",", ".").trim();
-        double valor = Double.parseDouble(limpo);
+        String limpo = texto.replace("R$", "").trim();
+        // Só aceita número decimal simples (dígitos, com vírgula ou ponto como separador decimal). O Double.parseDouble
+        // sozinho também aceitaria "Infinity", "NaN", "1e500" ou "0x1p3", que corromperiam os preços de todas as pizzas.
+        if (!limpo.matches("-?\\d+([.,]\\d+)?")) {
+            throw new NumberFormatException("Preço inválido: " + texto);
+        }
+        double valor = Double.parseDouble(limpo.replace(",", "."));
+        if (Double.isInfinite(valor)) {
+            // Dígitos demais: o número estoura o limite do tipo double
+            throw new NumberFormatException("Preço fora do limite: " + texto);
+        }
         if (valor <= 0.0) {
             throw new IllegalArgumentException("O preço da categoria " + nomeCampo + " deve ser maior que zero.");
         }

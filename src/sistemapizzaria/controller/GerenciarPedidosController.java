@@ -9,6 +9,7 @@ import sistemapizzaria.cliente.StatusPedido;
 import sistemapizzaria.dao.ClienteDao;
 import sistemapizzaria.dao.DaoFactory;
 import sistemapizzaria.dao.PedidoDao;
+import sistemapizzaria.excecoes.PedidoNaoEditavelException;
 import sistemapizzaria.model.GerenciarPedidosTableModel;
 import sistemapizzaria.model.GerenciarPedidosTableModel.LinhaPedidoCliente;
 import sistemapizzaria.telas.TelaGerenciarPedidos;
@@ -68,6 +69,10 @@ public class GerenciarPedidosController {
             pedidoDao.updateStatus(pedido.getIdentificador(), novoStatus);
             atualizarTabela(telefoneFiltro, statusFiltro);
             view.exibirSucesso("Estado do pedido #" + pedido.getIdentificador() + " atualizado para " + novoStatus + "!");
+        } catch (PedidoNaoEditavelException e) {
+            // O pedido foi excluído em outra tela: a tabela é atualizada para refletir isso
+            atualizarTabela(telefoneFiltro, statusFiltro);
+            view.exibirAviso(e.getMessage());
         } catch (Exception e) {
             view.exibirAviso("Erro ao atualizar estado do pedido: " + e.getMessage());
         }

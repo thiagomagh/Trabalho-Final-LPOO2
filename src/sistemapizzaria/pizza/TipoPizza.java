@@ -11,6 +11,10 @@ public class TipoPizza {
     }
 
     public void atualizarPrecoPorCm2(double preco) {
+        // Rejeita valores que não são números finitos (NaN e infinito), que corromperiam todos os preços calculados
+        if (Double.isNaN(preco) || Double.isInfinite(preco)) {
+            throw new IllegalArgumentException("O preço por centímetro quadrado deve ser um número válido.");
+        }
         // Verifica se o valor financeiro fornecido é maior ou igual a zero
         if (preco >= 0.0) {
             this.precoPorCm2 = preco;

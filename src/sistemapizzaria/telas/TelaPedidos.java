@@ -135,9 +135,11 @@ public class TelaPedidos extends JFrame {
         mainPanel.add(Box.createRigidArea(new Dimension(0, 10)));
 
         // 3. PAINEL DE MONTAGEM DE PIZZA
-        painelPizza = new PainelMontagemPizza(novaPizza -> {
+        // Os sabores chegam ao painel pelo controller: a View não acessa a camada DAO diretamente (MVC)
+        painelPizza = new PainelMontagemPizza(controller::listarSaboresDisponiveis, novaPizza -> {
             controller.adicionarPizzaAoCarrinho(novaPizza);
         });
+        painelPizza.setAcaoCancelarEdicao(controller::cancelarEdicaoPizza);
         painelPizza.setVisible(false);
         mainPanel.add(painelPizza);
         mainPanel.add(Box.createRigidArea(new Dimension(0, 10)));
@@ -259,8 +261,15 @@ public class TelaPedidos extends JFrame {
         contentPane.revalidate();
     }
 
+    // Carrega a pizza escolhida no carrinho para edição: o botão do painel passa a "Atualizar pizza"
     public void carregarPizzaNoPainelMontagem(Pizza pizza) {
         painelPizza.carregarPizzaParaEdicao(pizza);
+        painelPizza.definirModoEdicao(true);
+    }
+
+    // Esvazia o painel de montagem e sai do modo de edição de pizza
+    public void limparPainelMontagem() {
+        painelPizza.limparFormulario();
     }
 
     public void atualizarLabelPrecoTotal(double valorTotal) {

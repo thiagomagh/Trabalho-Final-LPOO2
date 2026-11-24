@@ -10,6 +10,7 @@ import sistemapizzaria.dao.ClienteDao;
 import sistemapizzaria.dao.DaoFactory;
 import sistemapizzaria.dao.PedidoDao;
 import sistemapizzaria.dao.SaborDao;
+import sistemapizzaria.excecoes.PedidoNaoEditavelException;
 import sistemapizzaria.model.CarrinhoPizzaTableModel;
 import sistemapizzaria.model.ClienteTableModel;
 import sistemapizzaria.model.PedidoTableModel;
@@ -35,6 +36,10 @@ public class PedidoController {
     private Pedido pedidoEmEdicao;
     private Pedido pedidoEmAndamento;
 
+    // Posição, no carrinho, da pizza que está sendo editada no painel de montagem (null = nenhuma).
+    // A pizza continua no carrinho enquanto é editada: ela só é substituída quando o usuário confirma a alteração.
+    private Integer indicePizzaEmEdicao;
+
     public PedidoController(
             TelaPedidos view,
             ClienteTableModel modeloClientes,
@@ -53,6 +58,7 @@ public class PedidoController {
         try {
             return saborDao.getAll();
         } catch (Exception e) {
+            view.exibirAviso("Erro ao carregar os sabores do banco de dados: " + e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -73,15 +79,22 @@ public class PedidoController {
             } else {
                 // Tenta busca parcial por telefone caso não encontre exato
                 List<Cliente> parciais = clienteDao.buscarPorSobrenomeETelefone("", tel);
-                if (!parciais.isEmpty()) {
-                    modeloClientes.setListaClientes(parciais);
-                    view.selecionarPrimeiraLinhaCliente();
-                } else {
+                if (parciais.isEmpty()) {
                     modeloClientes.setListaClientes(Collections.emptyList());
                     modeloPedidos.setListaPedidos(Collections.emptyList());
                     clienteAtual = null;
-                    view.ocultarPainelMontagemECarrinho();
+                    ocultarPainel();
                     view.exibirAviso("Cliente não encontrado para o telefone informado.");
+                } else if (parciais.size() == 1) {
+                    modeloClientes.setListaClientes(parciais);
+                    view.selecionarPrimeiraLinhaCliente();
+                } else {
+                    // Vários clientes combinam com o trecho digitado: quem escolhe é o usuário, na tabela.
+                    // Assim o pedido não é aberto, sem querer, para a pessoa errada.
+                    modeloClientes.setListaClientes(parciais);
+                    modeloPedidos.setListaPedidos(Collections.emptyList());
+                    clienteAtual = null;
+                    ocultarPainel();
                 }
             }
         } catch (Exception e) {
@@ -93,7 +106,7 @@ public class PedidoController {
         if (linhaCliente == -1) {
             clienteAtual = null;
             modeloPedidos.setListaPedidos(Collections.emptyList());
-            view.ocultarPainelMontagemECarrinho();
+            ocultarPainel();
             return;
         }
         try {
@@ -136,6 +149,7 @@ public class PedidoController {
             view.exibirAviso("Selecione um cliente primeiro.");
             return;
         }
+        this.indicePizzaEmEdicao = null;
         this.pedidoEmEdicao = null;
         this.pedidoEmAndamento = new Pedido();
         atualizarCarrinhoNaView();
@@ -155,6 +169,7 @@ public class PedidoController {
     }
 
     private void carregarPedidoParaEdicao(Pedido p) {
+        this.indicePizzaEmEdicao = null;
         this.pedidoEmEdicao = p;
         this.pedidoEmAndamento = new Pedido(p.getIdentificador(), p.getPrecoTotal(), p.getStatus());
         for (Pizza pizza : p.getPizzas()) {
@@ -175,16 +190,27 @@ public class PedidoController {
             return;
         }
 
-        if (!view.confirmarAcao("Deseja realmente excluir o pedido #" + p.getIdentificador() + "?")) {
-            return;
-        }
-
         try {
+            // O estado mostrado na tabela pode estar desatualizado (ex.: o pedido foi marcado como entregue em
+            // "Gerenciar Pedidos"), então o estado real é conferido no banco antes de excluir.
+            Pedido noBanco = pedidoDao.getById(p.getIdentificador());
+            if (noBanco == null || noBanco.getStatus() != StatusPedido.ABERTO) {
+                recarregarPedidosDoClienteAtual();
+                view.exibirAviso(noBanco == null
+                        ? "O pedido #" + p.getIdentificador() + " não existe mais."
+                        : "Não é possível excluir um pedido que já está a caminho ou foi entregue.");
+                return;
+            }
+
+            if (!view.confirmarAcao("Deseja realmente excluir o pedido #" + p.getIdentificador() + "?")) {
+                return;
+            }
+
             pedidoDao.delete(p.getIdentificador());
             if (pedidoEmEdicao != null && pedidoEmEdicao.getIdentificador() == p.getIdentificador()) {
                 pedidoEmEdicao = null;
                 pedidoEmAndamento = null;
-                view.ocultarPainelMontagemECarrinho();
+                ocultarPainel();
             }
             recarregarPedidosDoClienteAtual();
             view.exibirSucesso("Pedido excluído com sucesso!");
@@ -197,7 +223,19 @@ public class PedidoController {
         if (pedidoEmAndamento == null) {
             pedidoEmAndamento = new Pedido();
         }
-        pedidoEmAndamento.adicionarPizza(novaPizza);
+        if (indicePizzaEmEdicao != null) {
+            // Estava editando uma pizza do carrinho: a pizza alterada ocupa o lugar da original
+            List<Pizza> pizzas = pedidoEmAndamento.getPizzas();
+            if (indicePizzaEmEdicao >= 0 && indicePizzaEmEdicao < pizzas.size()) {
+                pizzas.set(indicePizzaEmEdicao, novaPizza);
+                pedidoEmAndamento.setPizzas(pizzas);
+            } else {
+                pedidoEmAndamento.adicionarPizza(novaPizza);
+            }
+            indicePizzaEmEdicao = null;
+        } else {
+            pedidoEmAndamento.adicionarPizza(novaPizza);
+        }
         atualizarCarrinhoNaView();
     }
 
@@ -209,11 +247,17 @@ public class PedidoController {
         if (pedidoEmAndamento != null) {
             Pizza pizza = modeloCarrinho.getPizza(linhaCarrinho);
             if (pizza != null) {
+                // A pizza continua no carrinho: se o usuário desistir da edição nada se perde
+                indicePizzaEmEdicao = linhaCarrinho;
                 view.carregarPizzaNoPainelMontagem(pizza);
-                pedidoEmAndamento.removerPizza(pizza);
-                atualizarCarrinhoNaView();
             }
         }
+    }
+
+    // O usuário desistiu de editar a pizza: ela segue no carrinho como estava
+    public void cancelarEdicaoPizza() {
+        indicePizzaEmEdicao = null;
+        view.limparPainelMontagem();
     }
 
     public void removerPizzaDoCarrinho(int linhaCarrinho) {
@@ -226,6 +270,10 @@ public class PedidoController {
             if (pizza != null) {
                 pedidoEmAndamento.removerPizza(pizza);
                 atualizarCarrinhoNaView();
+                // As posições do carrinho mudaram: qualquer edição de pizza em andamento é cancelada
+                if (indicePizzaEmEdicao != null) {
+                    cancelarEdicaoPizza();
+                }
             }
         }
     }
@@ -233,6 +281,11 @@ public class PedidoController {
     public void finalizarOuSalvarPedido() {
         if (clienteAtual == null) {
             view.exibirAviso("Selecione um cliente primeiro.");
+            return;
+        }
+        if (indicePizzaEmEdicao != null) {
+            view.exibirAviso("Há uma pizza em edição. Clique em \"Atualizar pizza\" para aplicar a alteração "
+                    + "ou em \"Cancelar edição\" para manter a pizza original.");
             return;
         }
         if (pedidoEmAndamento == null || pedidoEmAndamento.getPizzas().isEmpty()) {
@@ -252,8 +305,15 @@ public class PedidoController {
 
             pedidoEmEdicao = null;
             pedidoEmAndamento = null;
-            view.ocultarPainelMontagemECarrinho();
+            ocultarPainel();
             recarregarPedidosDoClienteAtual();
+        } catch (PedidoNaoEditavelException e) {
+            // O pedido mudou em outra tela (saiu para entrega, foi entregue ou excluído): nada foi gravado
+            pedidoEmEdicao = null;
+            pedidoEmAndamento = null;
+            ocultarPainel();
+            view.exibirAviso(e.getMessage() + "\nAs alterações feitas nesta tela não foram salvas.");
+            atualizarHistoricoDoClienteAtual();
         } catch (Exception e) {
             view.exibirAviso("Erro ao salvar pedido no banco de dados: " + e.getMessage());
         }
@@ -263,12 +323,26 @@ public class PedidoController {
         return clienteAtual;
     }
 
+    // Esconde o painel de montagem e o carrinho e encerra qualquer edição de pizza em andamento
+    private void ocultarPainel() {
+        indicePizzaEmEdicao = null;
+        view.ocultarPainelMontagemECarrinho();
+    }
+
     private void recarregarPedidosDoClienteAtual() throws Exception {
         if (clienteAtual != null) {
             clienteAtual = clienteDao.getById(clienteAtual.getId());
             if (clienteAtual != null) {
                 modeloPedidos.setListaPedidos(clienteAtual.getPedidos());
             }
+        }
+    }
+
+    private void atualizarHistoricoDoClienteAtual() {
+        try {
+            recarregarPedidosDoClienteAtual();
+        } catch (Exception e) {
+            view.exibirAviso("Erro ao recarregar os pedidos do cliente: " + e.getMessage());
         }
     }
 

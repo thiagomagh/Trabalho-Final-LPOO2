@@ -280,6 +280,11 @@ public class TelaClientes extends JFrame {
         controller.atualizarTabela();
     }
 
+    public boolean confirmarAcao(String pergunta) {
+        int confirm = JOptionPane.showConfirmDialog(this, pergunta, "Confirmar", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        return confirm == JOptionPane.YES_OPTION;
+    }
+
     public void exibirSucesso(String mensagem) {
         JOptionPane.showMessageDialog(this, mensagem, "Sucesso", JOptionPane.INFORMATION_MESSAGE);
     }

@@ -4,17 +4,17 @@ import sistemapizzaria.excecoes.*;
 
 public class Quadrado extends Forma {
 
-    private double lado;     
+    private double lado;
     // Estabelece o limite mínimo aceitável para o lado do quadrado.
-    public static final double MIN_LADO = 10.0; 
+    public static final double MIN_LADO = 10.0;
     // Estabelece o limite máximo aceitável para o lado do quadrado.
-    public static final double MAX_LADO = 40.0; 
+    public static final double MAX_LADO = 40.0;
 
     // Ajusta a medida do lado do quadrado.
     @Override
     public void definirPorDimensao(double dimensao) {
-        // Verifica a conformidade da dimensão recebida em relação aos limites estipulados para a forma.
-        if (dimensao < MIN_LADO || dimensao > MAX_LADO) {
+        // Verifica a conformidade da dimensão recebida (inclusive valores não numéricos) em relação aos limites estipulados para a forma.
+        if (Double.isNaN(dimensao) || dimensao < MIN_LADO || dimensao > MAX_LADO) {
             // Interrompe o fluxo de execução lançando um erro de dimensão inválida.
             throw new DimensaoInvalidaException("O lado do quadrado deve ter entre 10 e 40 cm.");
         }
@@ -24,23 +24,15 @@ public class Quadrado extends Forma {
 
     @Override
     public void definirPorArea(double area) {
-        // Confirma se a área submetida obedece aos limites genéricos definidos pela superclasse.
-        if (area < MIN_AREA || area > MAX_AREA) {
+        // Confirma se a área submetida está dentro da faixa que o quadrado aceita (limites globais de área e limites do lado).
+        if (Double.isNaN(area) || area < getAreaMinima() || area > getAreaMaxima()) {
             // Lança um erro de área inválida para evitar cálculos desnecessários e estados inconsistentes.
-            throw new AreaInvalidaException("A área da pizza deve ter entre 100 e 1600 cm².");
+            throw new AreaInvalidaException("A área de uma pizza quadrada deve ter entre " + descreverFaixaDeArea() + ".");
         }
-        
-        // Extrai o valor do lado
-        double ladoCalculado = Math.sqrt(area);
-        
-        // Submete a dimensão calculada à validação de limites do quadrado.
-        if (ladoCalculado < MIN_LADO || ladoCalculado > MAX_LADO) {
-            // Emite uma sinalização de erro caso a dimensão reversa transborde os limites geométricos previstos.
-            throw new DimensaoInvalidaException("A área informada resulta em um lado fora dos limites do quadrado (10 a 40 cm).");
-        }
-        
-        // Armazena definitivamente o valor do lado após atestar a sua validade.
-        this.lado = ladoCalculado;
+
+        // Extrai o valor do lado. Dentro da faixa de área aceita o lado sempre respeita os limites;
+        // o ajuste abaixo apenas protege contra imprecisão de ponto flutuante nas bordas.
+        this.lado = Math.min(MAX_LADO, Math.max(MIN_LADO, Math.sqrt(area)));
     }
 
     // Calcula a forma geométrica do quadrado
@@ -49,8 +41,18 @@ public class Quadrado extends Forma {
         return Math.pow(this.lado, 2);
     }
 
+    @Override
+    public double getAreaMinima() {
+        return Math.max(MIN_AREA, MIN_LADO * MIN_LADO);
+    }
+
+    @Override
+    public double getAreaMaxima() {
+        return Math.min(MAX_AREA, MAX_LADO * MAX_LADO);
+    }
+
     // Retorna a medida atual configurada para o lado do quadrado.
     public double getLado() {
-        return this.lado; 
+        return this.lado;
     }
 }
